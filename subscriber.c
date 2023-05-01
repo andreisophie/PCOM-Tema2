@@ -1,9 +1,3 @@
-/*
- * Protocoale de comunicatii
- * Laborator 7 - TCP si mulplixare
- * client.c
- */
-
 #include <arpa/inet.h>
 #include <ctype.h>
 #include <errno.h>
@@ -50,11 +44,11 @@ void run_client(int sockfd) {
             }
             sent_packet.len = strlen(buf) + 1;
             strcpy(sent_packet.message, buf);
-            send_all(sockfd, &sent_packet, sizeof(sent_packet));
+            send_tcp(sockfd, &sent_packet, sizeof(sent_packet));
         } else if (poll_fds[1].revents & POLLIN) {
             // primesc mesaj de la alt client
             printf("Received message from another client:");
-            int rc = recv_all(poll_fds[1].fd, &recv_packet, sizeof(recv_packet));
+            int rc = recv_tcp(poll_fds[1].fd, &recv_packet, sizeof(recv_packet));
             if (rc <= 0) {
                 printf("Eroare recv_all");
                 break;

@@ -4,8 +4,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
-int send_all(int sockfd, void *buff, size_t len);
-int recv_all(int sockfd, void *buff, size_t len);
+int send_tcp(int sockfd, void *buff, size_t len);
+int recv_tcp(int sockfd, void *buff, size_t len);
 
 /* Dimensiunea maxima a mesajului */
 #define MSG_MAXSIZE 1024

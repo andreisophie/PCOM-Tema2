@@ -3,7 +3,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 
-int recv_all(int sockfd, void *buffer, size_t len) {
+int recv_tcp(int sockfd, void *buffer, size_t len) {
 
     size_t bytes_received = 0;
     size_t bytes_remaining = len;
@@ -21,7 +21,7 @@ int recv_all(int sockfd, void *buffer, size_t len) {
     return len;
 }
 
-int send_all(int sockfd, void *buffer, size_t len) {
+int send_tcp(int sockfd, void *buffer, size_t len) {
     size_t bytes_sent = 0;
     size_t bytes_remaining = len;
     char *buff = buffer;
