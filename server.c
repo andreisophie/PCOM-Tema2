@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <netinet/tcp.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -51,6 +52,10 @@ int create_sock_tcp(uint16_t port) {
     // Obtinem un socket TCP pentru receptionarea conexiunilor
     int tcpfd = socket(AF_INET, SOCK_STREAM, 0);
     DIE(tcpfd < 0, "socket");
+    // dezactivez alg lui Nagle
+    int yes = 1;
+    int rc = setsockopt(tcpfd, IPPROTO_TCP, TCP_NODELAY, &yes, sizeof(yes));
+    DIE(rc < 0, "Failed Nagle");
 
     // Completăm in tcpservaddr adresa serverului, familia de adrese si portul
     // pentru conectare
@@ -66,7 +71,7 @@ int create_sock_tcp(uint16_t port) {
     memset(&tcpservaddr, 0, socket_len);
     tcpservaddr.sin_family = AF_INET;
     tcpservaddr.sin_port = htons(port);
-    int rc = inet_pton(AF_INET, IP_SERVER, &tcpservaddr.sin_addr.s_addr);
+    rc = inet_pton(AF_INET, IP_SERVER, &tcpservaddr.sin_addr.s_addr);
     DIE(rc <= 0, "inet_pton");
 
     // Asociem adresa serverului cu socketul creat folosind bind
@@ -108,10 +113,7 @@ void run_chat_multi_server(int udpfd, int tcpfd) {
                     fgets(buf, sizeof(buf), stdin);
                     if (strcmp(buf, "exit")) {
                         // TODO: inchid toti clientii
-                        close(udpfd);
-                        close(tcpfd);
-
-                        return 0;
+                        return;
                     }
                 } else if (poll_fds[i].fd == udpfd) {
                     // TODO: primesc mesaj pe socket-ul udp
