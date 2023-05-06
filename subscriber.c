@@ -15,12 +15,17 @@
 #include "common.h"
 #include "helpers.h"
 
-void run_client(int sockfd) {
+void run_client(int sockfd, char *id) {
     char buf[MSG_MAXSIZE + 1];
     memset(buf, 0, MSG_MAXSIZE + 1);
 
-    struct tcp_packet sent_packet;
-    struct tcp_packet recv_packet;
+    struct tcp_header header;
+
+    // trimit la server mesaj cu id-ul meu
+    header.action = CONNECT;
+    strcpy(buf, id);
+    header.len = strlen(id) + 1;
+    send_tcp(sockfd, &header, buf);
 
     struct pollfd poll_fds[2];
     int num_clients = 2;
@@ -44,34 +49,38 @@ void run_client(int sockfd) {
             int nr_fields = sscanf(buf, "%s %s %d", command, topic, &sf);
             if (nr_fields == 1 && !strcmp(command, "exit")) {
                 // Deconectez clientul
+                header.action = SHUTDOWN;
+                header.len = 0;
+                send_tcp(sockfd, &header, NULL);
                 shutdown(sockfd, SHUT_RDWR);
                 return;
             } else if (nr_fields == 3 && !strcmp(command, "subscribe") && (sf == 0 || sf == 1)) {
                 // Dau subscribe
-                sent_packet.action = SUBSCRIBE;
-                strcpy(sent_packet.message, topic);
-                sent_packet.len = strlen(topic) + 1;
-                send_tcp(poll_fds[1].fd, &sent_packet);
+                header.action = SUBSCRIBE;
+                header.len = strlen(topic) + 1;
+                send_tcp(poll_fds[1].fd, &header, (void *)topic);
                 printf("Subscribed to topic.\n");
             } else if(nr_fields == 2 && !strcmp(command, "unsubscribe")) {
                 // dau unsubscribe
-
+                header.action = UNSUBSCRIBE;
+                header.len = strlen(topic) + 1;
+                send_tcp(poll_fds[1].fd, &header, &topic);
                 printf("Unsubscribed from topic.\n");
             } else {
                 printf("Unknown command\nUsage:\tsubscribe <topic> <sf>\n\tunsubscribe <topic>\n\texit\n");
             }
         } else if (poll_fds[1].revents & POLLIN) {
             // primesc mesaj de la server
-            int rc = recv_tcp(poll_fds[1].fd, &recv_packet);
+            int rc = recv_tcp(poll_fds[1].fd, &header, buf);
             if (rc <= 0) {
                 printf("Eroare recv_all");
                 break;
             }
-            if (recv_packet.action == SHUTDOWN) {
+            if (header.action == SHUTDOWN) {
                 shutdown(sockfd, SHUT_RDWR);
                 return;
             }
-            printf("%s\n", recv_packet.message);
+            printf("%s\n", buf);
         } else {
             printf("Nu stiu ce s-a intamplat bobita\n");
         }
@@ -87,7 +96,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    char *client_id = argv[1]; 
+    char *client_id = argv[1];
 
     // Parsam port-ul ca un numar
     uint16_t port;
@@ -113,7 +122,7 @@ int main(int argc, char *argv[]) {
     rc = connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
     DIE(rc < 0, "connect");
 
-    run_client(sockfd);
+    run_client(sockfd, client_id);
 
     // Inchidem conexiunea si socketul creat
     close(sockfd);

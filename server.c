@@ -16,6 +16,13 @@
 #define MAX_CONNECTIONS 32
 #define IP_SERVER "127.0.0.1"
 
+void remove_from_poll(struct pollfd *poll_fds, int *num_clients, int index) {
+    for (int i = index; i < *num_clients; i++) {
+        poll_fds[i] = poll_fds[i + 1];
+    }
+    (*num_clients)--;
+}
+
 int create_sock_udp(uint16_t port) {
     int udpfd;
     struct sockaddr_in udpservaddr;
@@ -82,12 +89,13 @@ int create_sock_tcp(uint16_t port) {
 }
 
 void run_chat_multi_server(int udpfd, int tcpfd) {
-
+    char buf[MSG_MAXSIZE + 1];
+    memset(buf, 0, MSG_MAXSIZE + 1);
     struct pollfd poll_fds[MAX_CONNECTIONS];
     int num_clients = 3;
     int rc;
 
-    struct tcp_packet packet;
+    struct tcp_header header;
     // Setam socket-ul tcpfd pentru ascultare
     rc = listen(tcpfd, MAX_CONNECTIONS);
     DIE(rc < 0, "listen");
@@ -113,10 +121,10 @@ void run_chat_multi_server(int udpfd, int tcpfd) {
                     fgets(buf, sizeof(buf), stdin);
                     if (!strncmp(buf, "exit", 4)) {
                         // TODO: inchid toti clientii
-                        packet.action = SHUTDOWN;
-                        packet.len = 0;
+                        header.action = SHUTDOWN;
+                        header.len = 0;
                         for (int i = 3; i < num_clients; i++) {
-                            send_tcp(poll_fds[i].fd, &packet);
+                            send_tcp(poll_fds[i].fd, &header, NULL);
                             shutdown(poll_fds[i].fd, SHUT_RDWR);
                             close(poll_fds[i].fd);
                         }
@@ -124,6 +132,7 @@ void run_chat_multi_server(int udpfd, int tcpfd) {
                     }
                 } else if (poll_fds[i].fd == udpfd) {
                     // TODO: primesc mesaj pe socket-ul udp
+                    printf("Am primit un mesaj pe socket-ul udp\n");
                 } else if (poll_fds[i].fd == tcpfd) {
                     // a venit o cerere de conexiune pe socketul inactiv (cel cu listen),
                     // pe care serverul o accepta
@@ -139,35 +148,26 @@ void run_chat_multi_server(int udpfd, int tcpfd) {
                     poll_fds[num_clients].events = POLLIN;
                     num_clients++;
 
-                    printf("Noua conexiune de la %s, port %d, socket client %d\n",
-                        inet_ntoa(cli_addr.sin_addr), ntohs(cli_addr.sin_port),
-                        newsockfd);
+                    // primesc de la subscriber mesaj cu ip-ul lui
+                    recv_tcp(newsockfd, &header, buf);
+
+                    printf("New client %s connected from %s:%d.\n",
+                        buf, inet_ntoa(cli_addr.sin_addr), ntohs(cli_addr.sin_port));
                 } else {
                     // s-au primit date pe unul din socketii de client,
                     // asa ca serverul trebuie sa le receptioneze
-                    int rc = recv_tcp(poll_fds[i].fd, &packet);
+                    int rc = recv_tcp(poll_fds[i].fd, &header, buf);
                     DIE(rc < 0, "recv");
 
-                    if (rc == 0) {
-                        // conexiunea s-a inchis
-                        printf("Socket-ul client %d a inchis conexiunea\n", i);
+                    if (header.action == SHUTDOWN) {
+                        printf("Client disconnected.\n");
+                        shutdown(poll_fds[i].fd, SHUT_RDWR);
                         close(poll_fds[i].fd);
-
-                        // se scoate din multimea de citire socketul inchis
-                        for (int j = i; j < num_clients - 1; j++) {
-                            poll_fds[j] = poll_fds[j + 1];
-                        }
-
-                        num_clients--;
-
-                    } else {
-                        printf("S-a primit de la clientul de pe socketul %d mesajul: %s\n",
-                                poll_fds[i].fd, packet.message);
-                        /* Trimite mesajul catre toti ceilalti clienti */
-                        for (int j = 2; j < num_clients; j++) {
-                            if (j == i) continue;
-                            send_tcp(poll_fds[j].fd, &packet);
-                        }
+                        remove_from_poll(poll_fds, &num_clients, i);
+                    } else if (header.action == SUBSCRIBE) {
+                        printf("Client subscribed to topic %s.\n", buf);
+                    } else if (header.action == UNSUBSCRIBE) {
+                        printf("Client  unsubscribed from topic %s.\n", buf);
                     }
                 }
             }
