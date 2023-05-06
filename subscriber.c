@@ -56,7 +56,12 @@ void run_client(int sockfd, char *id) {
                 return;
             } else if (nr_fields == 3 && !strcmp(command, "subscribe") && (sf == 0 || sf == 1)) {
                 // Dau subscribe
-                header.action = SUBSCRIBE;
+                if (sf == 0) {
+                    header.action = SUBSCRIBE_NOSF;
+                } else {
+                    header.action = SUBSCRIBE_SF;
+                }
+                
                 header.len = strlen(topic) + 1;
                 send_tcp(poll_fds[1].fd, &header, (void *)topic);
                 printf("Subscribed to topic.\n");
@@ -79,8 +84,9 @@ void run_client(int sockfd, char *id) {
             if (header.action == SHUTDOWN) {
                 shutdown(sockfd, SHUT_RDWR);
                 return;
+            } else if (header.action == MESSAGE) {
+                printf("%s\n", buf);
             }
-            printf("%s\n", buf);
         } else {
             printf("Nu stiu ce s-a intamplat bobita\n");
         }
