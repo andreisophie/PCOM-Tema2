@@ -87,7 +87,7 @@ void run_chat_multi_server(int udpfd, int tcpfd) {
     int num_clients = 3;
     int rc;
 
-    struct chat_packet received_packet;
+    struct tcp_packet packet;
     // Setam socket-ul tcpfd pentru ascultare
     rc = listen(tcpfd, MAX_CONNECTIONS);
     DIE(rc < 0, "listen");
@@ -111,8 +111,15 @@ void run_chat_multi_server(int udpfd, int tcpfd) {
                     // primesc mesaj de la tastatura, verific daca imi cere sa inchid server-ul
                     char buf[MSG_MAXSIZE + 1];
                     fgets(buf, sizeof(buf), stdin);
-                    if (strcmp(buf, "exit")) {
+                    if (!strncmp(buf, "exit", 4)) {
                         // TODO: inchid toti clientii
+                        packet.action = SHUTDOWN;
+                        packet.len = 0;
+                        for (int i = 3; i < num_clients; i++) {
+                            send_tcp(poll_fds[i].fd, &packet);
+                            shutdown(poll_fds[i].fd, SHUT_RDWR);
+                            close(poll_fds[i].fd);
+                        }
                         return;
                     }
                 } else if (poll_fds[i].fd == udpfd) {
@@ -138,8 +145,7 @@ void run_chat_multi_server(int udpfd, int tcpfd) {
                 } else {
                     // s-au primit date pe unul din socketii de client,
                     // asa ca serverul trebuie sa le receptioneze
-                    int rc = recv_tcp(poll_fds[i].fd, &received_packet,
-                                    sizeof(received_packet));
+                    int rc = recv_tcp(poll_fds[i].fd, &packet);
                     DIE(rc < 0, "recv");
 
                     if (rc == 0) {
@@ -156,11 +162,11 @@ void run_chat_multi_server(int udpfd, int tcpfd) {
 
                     } else {
                         printf("S-a primit de la clientul de pe socketul %d mesajul: %s\n",
-                                poll_fds[i].fd, received_packet.message);
+                                poll_fds[i].fd, packet.message);
                         /* Trimite mesajul catre toti ceilalti clienti */
                         for (int j = 2; j < num_clients; j++) {
                             if (j == i) continue;
-                            send_tcp(poll_fds[j].fd, &received_packet, sizeof(received_packet));
+                            send_tcp(poll_fds[j].fd, &packet);
                         }
                     }
                 }
@@ -171,6 +177,11 @@ void run_chat_multi_server(int udpfd, int tcpfd) {
 
 int main(int argc, char *argv[]) {
     setvbuf(stdout, NULL, _IONBF, BUFSIZ);
+
+    if (argc != 2) {
+        printf("Usage: ./server <port>\n");
+        return 0;
+    }
 
     // Parsam port-ul ca un numar
     uint16_t port;

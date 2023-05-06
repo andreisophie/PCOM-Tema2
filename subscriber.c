@@ -19,8 +19,8 @@ void run_client(int sockfd) {
     char buf[MSG_MAXSIZE + 1];
     memset(buf, 0, MSG_MAXSIZE + 1);
 
-    struct chat_packet sent_packet;
-    struct chat_packet recv_packet;
+    struct tcp_packet sent_packet;
+    struct tcp_packet recv_packet;
 
     struct pollfd poll_fds[2];
     int num_clients = 2;
@@ -38,20 +38,38 @@ void run_client(int sockfd) {
         if (poll_fds[0].revents & POLLIN) {
             // primesc mesaj de la tastatura
             fgets(buf, sizeof(buf), stdin);
-            if (isspace(buf[0])) {
-                printf("Nu te mai juca cu spatiile!\n");
-                continue;
+            char command[MSG_MAXSIZE];
+            char topic[MSG_MAXSIZE];
+            int sf;
+            int nr_fields = sscanf(buf, "%s %s %d", command, topic, &sf);
+            if (nr_fields == 1 && !strcmp(command, "exit")) {
+                // Deconectez clientul
+                shutdown(sockfd, SHUT_RDWR);
+                return;
+            } else if (nr_fields == 3 && !strcmp(command, "subscribe") && (sf == 0 || sf == 1)) {
+                // Dau subscribe
+                sent_packet.action = SUBSCRIBE;
+                strcpy(sent_packet.message, topic);
+                sent_packet.len = strlen(topic) + 1;
+                send_tcp(poll_fds[1].fd, &sent_packet);
+                printf("Subscribed to topic.\n");
+            } else if(nr_fields == 2 && !strcmp(command, "unsubscribe")) {
+                // dau unsubscribe
+
+                printf("Unsubscribed from topic.\n");
+            } else {
+                printf("Unknown command\nUsage:\tsubscribe <topic> <sf>\n\tunsubscribe <topic>\n\texit\n");
             }
-            sent_packet.len = strlen(buf) + 1;
-            strcpy(sent_packet.message, buf);
-            send_tcp(sockfd, &sent_packet, sizeof(sent_packet));
         } else if (poll_fds[1].revents & POLLIN) {
-            // primesc mesaj de la alt client
-            printf("Received message from another client:");
-            int rc = recv_tcp(poll_fds[1].fd, &recv_packet, sizeof(recv_packet));
+            // primesc mesaj de la server
+            int rc = recv_tcp(poll_fds[1].fd, &recv_packet);
             if (rc <= 0) {
                 printf("Eroare recv_all");
                 break;
+            }
+            if (recv_packet.action == SHUTDOWN) {
+                shutdown(sockfd, SHUT_RDWR);
+                return;
             }
             printf("%s\n", recv_packet.message);
         } else {
@@ -65,7 +83,7 @@ int main(int argc, char *argv[]) {
     int sockfd = -1;
 
     if (argc != 4) {
-        printf("\n Usage: %s <id> <ip> <port>\n", argv[0]);
+        printf("Usage: %s <id> <ip> <port>\n", argv[0]);
         return 1;
     }
 
