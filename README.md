@@ -49,7 +49,7 @@ Astfel, header-ul:
 - transmite informatii despre tipul actiunii
 - in functie de tipul actiunii, se pot transmite date suplimentare:
     - actiunea de tipul `CONNECT` va atasa header-ului un string care reprezinta id-ul clientului care tocmai s-a conectat
-    - actiunile de tipul `SUBSCRIBE_NOSF`, `SUBSCRIBE_SF` si `UNSUBSCRIBE` vor avea atasat un string care reprezinta topic-ul la care clientul se aboneaza
+    - actiunile de tipul `SUBSCRIBE_NOSF`, `SUBSCRIBE_SF` si `UNSUBSCRIBE` vor avea atasat un string care reprezinta topic-ul la care clientul se aboneaza/ dezaboneaza
     - actiunile de tipul `MESSAGE` vor avea atasat un string care reprezinta mesajul primit de la clientii UDP
 - pentru tipurile de mesaje descrise mai sus, campul `len` va contine lungimea string-urilor atasate; pentru tipurile de mesaje care nu transmit date suplimentare (`SHUTDOWN`) acest camp va avea valoarea 0
 
