@@ -85,3 +85,63 @@ In aceasta sectiune voi descrie in detaliu functionarea protocolului TCP pentru 
 3. `SUBSCRIBE_NOSF`
 
 - Identic cu `SUBSCRIBE_SF` doar ca se initiaza pentru comenzi de subscribe cu `sf=1`
+
+4. `MESSAGE`
+
+- Acest tip de mesaj este trimis doar de catre server subscriberilor
+- Datele suplimentare reprezinta string-ul care contine
+mesajul primit de la un client UDP
+- Serverul se asigura ca numai clientii abonati la un anumit topic vor primi astfel de mesaje, deci subscriberul nu trebuie sa verifice nimic cand primeste un asemenea mesaj
+
+5. `UNSUBSCRIBE`
+
+- Identic cu comenzide te tip `SUBSCRIBE`, doar ca este folosit pentru a dezabona un subscriber de la un anumit topic si lipseste parametrul `sf`
+
+6. `SHUTDOWN`
+
+- Acest tip de mesaj poate fi trimis atat de server subscriberilor, cat si invers
+- In functie de cine il trimite, mesajul are semnificatii diferite:
+    - daca este trimis de **server**, acesta reprezinta o notificare catre toti clientii ca serverul se inchide si ca trebuie sa se inchida si ei
+    - daca este trimis de **client**, acesta reprezinta o notificare ca respectivul client se va inchide si server-ul trebuie sa il marcheze intern ca deconectat, in pregatire pentru o viitoare reconectare
+
+## Functionarea server-ului
+
+In aceasta sectiune voi descrie in detaliu functionarea server-ului, structurile de date de care se foloseste, etc.
+
+- La pornire, server-ul deschide un socket UDP si un socket TCP pe adresa `127.0.0.1` si port-ul primit ca parametru in linia de comanda, ambii pe acelasi port
+- Cei doi socketi nou deschisi vor asculta mesaje (UDP), respectiv cereri noi de conexiune (TCP)
+- Dupa pornirea cu succes a socketilor, serverul trebuie sa monitoreze conexiuni atat pe cei doi socketi, cat si de la tastatura; pentru asta folosesc API-ul `poll`
+- La conectarea fiecarui subscriber nou, serverul va astepta ca acesta sa ii trimita un mesaj TCP cu ID-ul sau (cum am descris mai sus), deoarece aceasta informatie este esentiala pentru configurarea ulterioara a structurilor interne
+    - Pentru a gestiona clientii, server-ul asociaza fiecarui subscriber un Client Control Block (CCB) care contine urmatoarele date:
+        - file descriptor-ul pe care clientul primeste si trimite mesaje
+        - id-ul clientului
+        - daca clientul este conectat sau nu la momentul curent
+        - topic-urile la care clientul este abonat
+        - mesajele pe care clientul trebuie sa le primeasca cand se va reconecta, datorita functionalitatii de `store-and-forward`
+    - Dupa ce primeste id-ului unui client care doreste sa se conecteze, server-ul verifica urmatoarele lucruri:
+        - are serverul in memorie un CCB asociat acestui client?
+            - daca da, verifica daca este deja un client cu acel id conectat
+                - daca da, refuza conexiunea si trimite un mesaj de tip `SHUTDOWN` subscriber-ului
+                - altfel, actualizeaza CCB-ul gasit si trimite orice mesaje pending catre subscriber
+            - altfel, creeaza un CCB nou pentru acel subscriber
+- Subscriberii deja conectati au posibilitatea de a se abona/ dezabona la/ de la topic-uri, server-ul va primi astfel de mesaje de la clienti si va actualiza CCB-ul asociat clientului in mod corespunzator
+- Atunci cand primeste un mesaj de la un client UDP, server-ul va compune mesajul (string-ul) de trimis catre clientii UDP si va parcurge lista de CCBs in cautarea clientilor care sunt abonati la topic-ul primit de la clientii UDP
+    - La gasirea unui client abonat, serverul fie va trimite imediat mesajul catre clientul TCP daca acesta este conectat, fie il va pune in coada de mesaje de trimis daca clientul este deconectat si abonamentul sau la topic-ul cautat este cu flag-ul `sf=1`
+- La deconectarea unui subscriber, serverul va primi mesajul de tip `SHUTDOWN` de la client si va marca acel subscriber ca fiind deconectat in CCB-ul sau si ii va sterge file descriptor-ul din lista de polling, fiind pregatit pentru o eventuala reconectare
+
+## Alte observatii
+
+Tema aceasta a fost interesanta, insa enuntul a lasat putin de dorit din anumite puncte de vedere. Astfel, ofer urmatorul feedback:
+
+- Ar trebui scris in clar in enuntul temei ca IP-ului pe care trebuie sa porneasca serverul este `127.0.0.1` si faptul ca ambii socketi (UDP si TCP) vor porni pe acelasi port
+- As dori o explicatie mai clara pentru ce inseamna *definirea unui protocol eficient de nivel aplicatie peste TCP*
+    - avand in vedere ce am invatat pana acum la aceasta materie, la prima vedere am crezut ca se doreste crearea unui protocol peste TCP cu ACK-uri sau ceva asemanator
+    - cred ca ar fi bine de evitat cuvantul protocol in aceasta formulare, pentru ca de fapt se cere ceva mult mai simplu decat un protocol cum am explicat mai sus (o structura eficienta a mesajelor/ evitarea transmiterii unor mesaje inutile)
+- Nu ar deranja pe nimeni daca ne-ati scuti de cautat pe google cum sa dezactivam alg lui Nagle 😁 (din paginile unde am cautat aceasta informatie, 4 din 5 aveau informatii gresite)
+
+In rest, cateva lucruri pe care le-am apreciat la aceasta tema:
+
+- Nu a trebuit sa folosim Mininet ❤
+- Checker-ul nu ofera punctaje neaparat, sugerand ca oferirea notelor se va face mai degraba de mana, ceea ce mi se pare mai potrivit la aceasta materie unde lucram cu notiuni si API-uri complexe care pot merge prost in extrem de multe feluri
+- Posibilitatea de a refolosi foarte mult cod deja lucrat la laboratoare, dar in aceeasi masura crearea de cod noupentru functionalitati noi
+- Tema avea putin din toate, abordeaza mai multe concepte la un nivel destul de basic, facand-o destul de facila si accesibila, dar avand in continuare posibilitatea de a invata extrem de multe chestii din ea
