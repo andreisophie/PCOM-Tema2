@@ -25,11 +25,10 @@ Pentru comunicarea intre clientii TCP folosesc un protocol simplu, dar eficient,
 
 - Orice mesaj TCP are un header cu urmatoarele campuri:
 
-| Field  | Datatype        | Size  | Info                          |   |
-|--------|-----------------|-------|-------------------------------|---|
-| action | `enum tcp_action` | 4 oct | tipul actiunii                |   |
-| len    | `uint16_t`        | 2 oct | lungimea datelor suplimentare |   |
-|        |                 |       |                               |   |
+| Field  | Datatype        | Size  | Info                          |
+|--------|-----------------|-------|-------------------------------|
+| action | `enum tcp_action` | 4 oct | tipul actiunii                |
+| len    | `uint16_t`        | 2 oct | lungimea datelor suplimentare |
 
 Campul `enum tcp_action` accepta urmatoarele tipuri de actiuni:
 
