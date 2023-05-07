@@ -91,8 +91,10 @@ void remove_from_poll(struct pollfd *poll_fds, int *num_fds, int index) {
 void add_topic(CCB *client, char *topic, int sf) {
     if (client->nr_topics == 0) {
         client->topics = malloc(sizeof(struct topic));
+        DIE(client->topics == NULL, "failed malloc client->topics\n");
     } else {
         client->topics = realloc(client->topics, (client->nr_topics + 1) * sizeof(struct topic));
+        DIE(client->topics == NULL, "failed realloc client->topics\n");
     }
     strcpy(client->topics[client->nr_topics].topic, topic);
     client->topics[client->nr_topics].sf = sf;
@@ -116,6 +118,7 @@ void remove_topic(CCB *client, char *topic) {
             }
             client->nr_topics--;
             client->topics = realloc(client->topics, client->nr_topics * sizeof(struct topic));
+            DIE(client->topics == NULL, "failed realloc client->topics\n");
             return;
         }
     }
@@ -222,10 +225,13 @@ void run_server(int udpfd, int tcpfd, struct sockaddr_in *udpservaddr) {
                         // inchid toti clientii
                         header.action = SHUTDOWN;
                         header.len = 0;
-                        for (int i = 3; i < num_fds; i++) {
-                            send_tcp(poll_fds[i].fd, &header, NULL);
-                            shutdown(poll_fds[i].fd, SHUT_RDWR);
-                            close(poll_fds[i].fd);
+                        for (int j = 3; j < num_fds; j++) {
+                            rc = send_tcp(poll_fds[j].fd, &header, NULL);
+                            if (rc < 0) {
+                                fprintf(stderr, "Could not send shutdown message to subscriber %s\n", clients[j].id);
+                            }
+                            shutdown(poll_fds[j].fd, SHUT_RDWR);
+                            close(poll_fds[j].fd);
                         }
                         // eliberez memoria alocata dinamic
                         for (int j = 0; j < num_clients; j++) {
@@ -241,8 +247,8 @@ void run_server(int udpfd, int tcpfd, struct sockaddr_in *udpservaddr) {
                     // primesc mesaj pe socket-ul udp
                     socklen_t size_udp = sizeof(*udpservaddr);
                     memset(buf, 0, MSG_MAXSIZE);
-                    int ret = recvfrom(udpfd, buf, 1551, 0, (struct sockaddr *)udpservaddr, &size_udp);
-                    DIE(ret < 0, "recvfrom failed");
+                    rc = recvfrom(udpfd, buf, 1551, 0, (struct sockaddr *)udpservaddr, &size_udp);
+                    DIE(rc < 0, "recvfrom failed");
                     // construiesc mesajul de trimis catre clientii tcp
                     struct udp_message recv_message;
                     build_udp_message(buf, &recv_message, udpservaddr);
@@ -252,7 +258,10 @@ void run_server(int udpfd, int tcpfd, struct sockaddr_in *udpservaddr) {
                             if (clients[j].connected) {
                                 header.action = MESSAGE;
                                 header.len = strlen(buf) + 1;
-                                send_tcp(clients[j].fd, &header, buf);
+                                rc = send_tcp(clients[j].fd, &header, buf);
+                                if (rc < 0) {
+                                    fprintf(stderr, "Could not send message to subscriber %s\n", clients[j].id);
+                                }
                             } else {
                                 if (client_topic->sf == 1) {
                                     clients[j].pending_messages[clients[j].nr_pending++] = strdup(buf);
@@ -276,10 +285,16 @@ void run_server(int udpfd, int tcpfd, struct sockaddr_in *udpservaddr) {
                     num_fds++;
 
                     // primesc de la subscriber mesaj cu id-ul lui
-                    recv_tcp(newsockfd, &header, buf);
+                    rc = recv_tcp(newsockfd, &header, buf);
+                    if (rc < 0) {
+                        fprintf(stderr, "Could not receive client ID\n");
+                        remove_from_poll(poll_fds, &num_fds, num_fds - 1);
+                        break;
+                    }
                     // creez un ccb pt noul client, daca nu exista deja
                     if (clients == NULL) {
                         clients = malloc(sizeof(CCB));
+                        DIE(clients == NULL, "failed malloc clients\n");
                         clients[num_clients].connected = 1;
                         clients[num_clients].fd = newsockfd;
                         strcpy(clients[num_clients].id, buf);
@@ -304,7 +319,10 @@ void run_server(int udpfd, int tcpfd, struct sockaddr_in *udpservaddr) {
                                 printf("Client %s already connected.\n", buf);
                                 header.action = SHUTDOWN;
                                 header.len = 0;
-                                send_tcp(newsockfd, &header, NULL);
+                                rc = send_tcp(newsockfd, &header, NULL);
+                                if (rc < 0) {
+                                    fprintf(stderr, "Could not send message to duplicate subscriber\n");
+                                }
                                 remove_from_poll(poll_fds, &num_fds, num_fds - 1);
                                 break;
                             }
@@ -313,13 +331,17 @@ void run_server(int udpfd, int tcpfd, struct sockaddr_in *udpservaddr) {
                             for (int i = 0; i < client->nr_pending; i++) {
                                 header.action = MESSAGE;
                                 header.len = strlen(client->pending_messages[i]) + 1;
-                                send_tcp(client->fd, &header, client->pending_messages[i]);
+                                rc = send_tcp(client->fd, &header, client->pending_messages[i]);
+                                if (rc < 0) {
+                                    fprintf(stderr, "Could not send message to subscriber %s\n", client->id);
+                                }
                                 free(client->pending_messages[i]);
                             }
                             client->nr_pending = 0;
                         } else {
                             // daca clientul este nou, creez un CCB nou pentru el
                             clients = realloc(clients, (num_clients + 1) * sizeof(CCB));
+                            DIE(clients == NULL, "failed realloc clients\n");
                             strcpy(clients[num_clients].id, buf);
                             clients[num_clients].connected = 1;
                             clients[num_clients].fd = newsockfd;

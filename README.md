@@ -143,5 +143,7 @@ In rest, cateva lucruri pe care le-am apreciat la aceasta tema:
 
 - Nu a trebuit sa folosim Mininet ❤
 - Checker-ul nu ofera punctaje neaparat, sugerand ca oferirea notelor se va face mai degraba de mana, ceea ce mi se pare mai potrivit la aceasta materie unde lucram cu notiuni si API-uri complexe care pot merge prost in extrem de multe feluri
+- Lipsa unui checker de coding style face acest aspect sa nu fie foarte rigid, chiar daca aspectul codului este in continuare punctat
 - Posibilitatea de a refolosi foarte mult cod deja lucrat la laboratoare, dar in aceeasi masura crearea de cod noupentru functionalitati noi
 - Tema avea putin din toate, abordeaza mai multe concepte la un nivel destul de basic, facand-o destul de facila si accesibila, dar avand in continuare posibilitatea de a invata extrem de multe chestii din ea
+- Overall tematica temei este smechera, a fost foarte satisfying cand a inceput sa mearga ok totul
