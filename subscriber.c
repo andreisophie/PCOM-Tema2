@@ -60,16 +60,15 @@ void run_client(int sockfd, char *id) {
                     header.action = SUBSCRIBE_NOSF;
                 } else {
                     header.action = SUBSCRIBE_SF;
-                }
-                
+                }                
                 header.len = strlen(topic) + 1;
-                send_tcp(poll_fds[1].fd, &header, (void *)topic);
+                send_tcp(poll_fds[1].fd, &header, topic);
                 printf("Subscribed to topic.\n");
             } else if(nr_fields == 2 && !strcmp(command, "unsubscribe")) {
                 // dau unsubscribe
                 header.action = UNSUBSCRIBE;
                 header.len = strlen(topic) + 1;
-                send_tcp(poll_fds[1].fd, &header, &topic);
+                send_tcp(poll_fds[1].fd, &header, topic);
                 printf("Unsubscribed from topic.\n");
             } else {
                 printf("Unknown command\nUsage:\tsubscribe <topic> <sf>\n\tunsubscribe <topic>\n\texit\n");
