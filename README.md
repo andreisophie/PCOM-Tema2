@@ -32,7 +32,7 @@ Pentru comunicarea intre clientii TCP folosesc un protocol simplu, dar eficient,
 
 Campul `enum tcp_action` accepta urmatoarele tipuri de actiuni:
 
-```
+```C
 enum tcp_action {
     CONNECT = 0,
     SUBSCRIBE_SF = 1,
