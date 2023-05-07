@@ -16,14 +16,6 @@
 #define MAX_CONNECTIONS 32
 #define IP_SERVER "127.0.0.1"
 
-void remove_from_poll(struct pollfd *poll_fds, int *num_fds, int index) {
-    for (int i = index; i < *num_fds - 1; i++) {
-        poll_fds[i] = poll_fds[i + 1];
-    }
-    poll_fds[*num_fds].events = 0;
-    (*num_fds)--;
-}
-
 int create_sock_udp(uint16_t port, struct sockaddr_in *udpservaddr) {
     int udpfd;
 
@@ -88,6 +80,14 @@ int create_sock_tcp(uint16_t port) {
     return tcpfd;
 }
 
+void remove_from_poll(struct pollfd *poll_fds, int *num_fds, int index) {
+    for (int i = index; i < *num_fds - 1; i++) {
+        poll_fds[i] = poll_fds[i + 1];
+    }
+    poll_fds[*num_fds].events = 0;
+    (*num_fds)--;
+}
+
 void add_topic(CCB *client, char *topic, int sf) {
     if (client->nr_topics == 0) {
         client->topics = malloc(sizeof(struct topic));
@@ -121,7 +121,72 @@ void remove_topic(CCB *client, char *topic) {
     }
 }
 
-void run_chat_multi_server(int udpfd, int tcpfd, struct sockaddr_in *udpservaddr) {
+void build_udp_message(char *buf, struct udp_message *recv_message, struct sockaddr_in *udpservaddr) {
+    memset(recv_message->topic, 0, 51);
+    strncpy(recv_message->topic, buf, 50);
+    recv_message->data_type = *((uint8_t *)(buf + 50));
+    memset(recv_message->body, 0, 1501);
+    memcpy(recv_message->body, buf + 51, 1500);
+    // Incep sa construiesc mesajul de trimis la clientii TCP
+    char buf2[ARR_MAX];
+    memset(buf, 0, MSG_MAXSIZE);
+    inet_ntop(AF_INET, &(udpservaddr->sin_addr), buf2, INET_ADDRSTRLEN);
+    strcpy(buf, buf2);
+    strcat(buf, ":");
+    memset(buf2, 0, ARR_MAX);
+    sprintf(buf2, "%d", ntohs(udpservaddr->sin_port));
+    strcat(buf, buf2);
+    strcat(buf, " - ");
+    strcat(buf, recv_message->topic);
+    strcat(buf, " - ");
+    uint8_t signum, power;
+    uint32_t value;
+    float float_value;
+    switch (recv_message->data_type) {
+        case 0:
+            // INT
+            signum = *((uint8_t *)recv_message->body);
+            value = ntohl(*((uint32_t *)(recv_message->body + 1)));
+            if (signum == 1)
+                value *= -1;
+            strcat(buf, "INT - ");
+            memset(buf2, 0, ARR_MAX);
+            sprintf(buf2, "%d", value);
+            strcat(buf, buf2);
+            break;
+        case 1:
+            // SHORT_REAL
+            value = ntohs(*((uint16_t *)recv_message->body));
+            float_value = (float)value / 100;
+            strcat(buf, "SHORT_REAL - ");
+            memset(buf2, 0, ARR_MAX);
+            sprintf(buf2, "%.2f", float_value);
+            strcat(buf, buf2);
+            break;
+        case 2:
+            // FLOAT
+            signum = *((uint8_t *)recv_message->body);
+            value = ntohl(*((uint32_t *)(recv_message->body + 1)));
+            power = *((uint8_t *)(recv_message->body + 5));
+            float_value = (float)value;
+            if (signum == 1)
+                float_value *= -1;
+            for (int i = 0; i < power; i++) {
+                float_value /= 10;
+            }
+            strcat(buf, "FLOAT - ");
+            memset(buf2, 0, ARR_MAX);
+            sprintf(buf2, "%.4f", float_value);
+            strcat(buf, buf2);
+            break;
+        case 3:
+            strcat(buf, "STRING - ");
+            strcat(buf, recv_message->body);
+            break;
+    }
+}
+
+void run_server(int udpfd, int tcpfd, struct sockaddr_in *udpservaddr) {
     int num_clients = 0;
     CCB *clients = NULL;
     char buf[MSG_MAXSIZE + 1];
@@ -162,79 +227,25 @@ void run_chat_multi_server(int udpfd, int tcpfd, struct sockaddr_in *udpservaddr
                             shutdown(poll_fds[i].fd, SHUT_RDWR);
                             close(poll_fds[i].fd);
                         }
+                        // eliberez memoria alocata dinamic
+                        for (int j = 0; j < num_clients; j++) {
+                            for (int k = 0; k < clients[j].nr_pending; k++) {
+                                free(clients[j].pending_messages[k]);
+                            }
+                            free(clients[j].topics);
+                        }
+                        free(clients);
                         return;
                     }
                 } else if (poll_fds[i].fd == udpfd) {
                     // primesc mesaj pe socket-ul udp
                     socklen_t size_udp = sizeof(*udpservaddr);
-
                     memset(buf, 0, MSG_MAXSIZE);
                     int ret = recvfrom(udpfd, buf, 1551, 0, (struct sockaddr *)udpservaddr, &size_udp);
                     DIE(ret < 0, "recvfrom failed");
-
+                    // construiesc mesajul de trimis catre clientii tcp
                     struct udp_message recv_message;
-                    memset(recv_message.topic, 0, 51);
-                    strncpy(recv_message.topic, buf, 50);
-                    recv_message.data_type = *((uint8_t *)(buf + 50));
-                    memset(recv_message.body, 0, 1501);
-                    memcpy(recv_message.body, buf + 51, 1500);
-                    // Incep sa construiesc mesajul de trimis la clientii TCP
-                    char buf2[ARR_MAX];
-                    memset(buf, 0, MSG_MAXSIZE);
-                    inet_ntop(AF_INET, &(udpservaddr->sin_addr), buf2, INET_ADDRSTRLEN);
-                    strcpy(buf, buf2);
-                    strcat(buf, ":");
-                    memset(buf2, 0, ARR_MAX);
-                    sprintf(buf2, "%d", ntohs(udpservaddr->sin_port));
-                    strcat(buf, buf2);
-                    strcat(buf, " - ");
-                    strcat(buf, recv_message.topic);
-                    strcat(buf, " - ");                    
-                    uint8_t signum, power;
-                    uint32_t value;
-                    float float_value;
-                    switch (recv_message.data_type) {
-                        case 0:
-                            // INT
-                            signum = *((uint8_t *)recv_message.body);
-                            value = ntohl(*((uint32_t *)(recv_message.body + 1)));
-                            if (signum == 1)
-                                value *= -1;
-                            strcat(buf, "INT - ");
-                            memset(buf2, 0, ARR_MAX);
-                            sprintf(buf2, "%d", value);
-                            strcat(buf, buf2);
-                            break;
-                        case 1:
-                            // SHORT_REAL
-                            value = ntohs(*((uint16_t *)recv_message.body));
-                            float_value = (float)value / 100;
-                            strcat(buf, "SHORT_REAL - ");
-                            memset(buf2, 0, ARR_MAX);
-                            sprintf(buf2, "%.2f", float_value);
-                            strcat(buf, buf2);
-                            break;
-                        case 2:
-                            // FLOAT
-                            signum = *((uint8_t *)recv_message.body);
-                            value = ntohl(*((uint32_t *)(recv_message.body + 1)));
-                            power = *((uint8_t *)(recv_message.body + 5));
-                            float_value = (float)value;
-                            if (signum == 1)
-                                float_value *= -1;
-                            for (int i = 0; i < power; i++) {
-                                float_value /= 10;
-                            }
-                            strcat(buf, "FLOAT - ");
-                            memset(buf2, 0, ARR_MAX);
-                            sprintf(buf2, "%.4f", float_value);
-                            strcat(buf, buf2);                       
-                            break;
-                        case 3:
-                            strcat(buf, "STRING - ");
-                            strcat(buf, recv_message.body);  
-                            break;
-                    }
+                    build_udp_message(buf, &recv_message, udpservaddr);
                     for (int j = 0; j < num_clients; j++) {
                         struct topic *client_topic = client_get_topic(&clients[j], recv_message.topic);
                         if (client_topic) {
@@ -247,7 +258,7 @@ void run_chat_multi_server(int udpfd, int tcpfd, struct sockaddr_in *udpservaddr
                                     clients[j].pending_messages[clients[j].nr_pending++] = strdup(buf);
                                 }
                             }
-                            
+
                         }
                     }
                 } else if (poll_fds[i].fd == tcpfd) {
@@ -266,7 +277,7 @@ void run_chat_multi_server(int udpfd, int tcpfd, struct sockaddr_in *udpservaddr
 
                     // primesc de la subscriber mesaj cu id-ul lui
                     recv_tcp(newsockfd, &header, buf);
-                    // creez un ccb pt noul client daca nu exista deja
+                    // creez un ccb pt noul client, daca nu exista deja
                     if (clients == NULL) {
                         clients = malloc(sizeof(CCB));
                         clients[num_clients].connected = 1;
@@ -297,25 +308,27 @@ void run_chat_multi_server(int udpfd, int tcpfd, struct sockaddr_in *udpservaddr
                                 remove_from_poll(poll_fds, &num_fds, num_fds - 1);
                                 break;
                             }
-                            
-                            // verific daca am mesaje ramase de dinainte
+
+                            // trimit mesaje ramase de dinainte
                             for (int i = 0; i < client->nr_pending; i++) {
                                 header.action = MESSAGE;
                                 header.len = strlen(client->pending_messages[i]) + 1;
                                 send_tcp(client->fd, &header, client->pending_messages[i]);
+                                free(client->pending_messages[i]);
                             }
+                            client->nr_pending = 0;
                         } else {
-                            // daca nu exista, creez un CCB nou pentru el
+                            // daca clientul este nou, creez un CCB nou pentru el
                             clients = realloc(clients, (num_clients + 1) * sizeof(CCB));
                             strcpy(clients[num_clients].id, buf);
                             clients[num_clients].connected = 1;
                             clients[num_clients].fd = newsockfd;
                             clients[num_clients].nr_topics = 0;
                             clients[num_clients].nr_pending = 0;
-                            
+
                             num_clients++;
-                        }                        
-                    }                  
+                        }
+                    }
 
                     printf("New client %s connected from %s:%d.\n",
                         buf, inet_ntoa(cli_addr.sin_addr), ntohs(cli_addr.sin_port));
@@ -352,7 +365,7 @@ void run_chat_multi_server(int udpfd, int tcpfd, struct sockaddr_in *udpservaddr
                             remove_topic(client, buf);
                             break;
                         default:
-                            printf("this should not happen\n");
+                            printf("Unknown request coming from TCP client %s.\n", client->id);
                     }
                 }
             }
@@ -382,7 +395,7 @@ int main(int argc, char *argv[]) {
     int udpfd = create_sock_udp(port, &udpservaddr);
     int tcpfd = create_sock_tcp(port);
 
-    run_chat_multi_server(udpfd, tcpfd, &udpservaddr);
+    run_server(udpfd, tcpfd, &udpservaddr);
 
     // Inchidem socketii
     close(udpfd);
